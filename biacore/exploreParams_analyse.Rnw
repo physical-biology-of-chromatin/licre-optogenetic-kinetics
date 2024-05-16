@@ -1,0 +1,1277 @@
+%%%% 
+\documentclass[english]{article}
+\usepackage[T1]{fontenc}
+\usepackage[latin9]{inputenc}
+\usepackage{textcomp}
+\usepackage{pdfpages}
+\usepackage{graphicx}
+\usepackage{verbatim}
+
+
+\makeatletter
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Textclass specific LaTeX commands.
+\usepackage{Sweave}
+\newcommand{\Rcode}[1]{{\texttt{#1}}}
+\newcommand{\Robject}[1]{{\texttt{#1}}}
+\newcommand{\Rcommand}[1]{{\texttt{#1}}}
+\newcommand{\Rfunction}[1]{{\texttt{#1}}}
+\newcommand{\Rfunarg}[1]{{\textit{#1}}}
+\newcommand{\Rpackage}[1]{{\textit{#1}}}
+\newcommand{\Rmethod}[1]{{\textit{#1}}}
+\newcommand{\Rclass}[1]{{\textit{#1}}}
+
+\makeatother
+
+\usepackage{babel}
+\begin{document}
+
+\title{ Biacore model: analysis of parameter values obtained from various initializations }
+
+
+\author{Daniel Jost, Gael Yvert}
+
+\maketitle
+\tableofcontents{}
+
+\newpage{}
+
+
+\section{Settings and sourcing useful functions}
+
+Initialize and inform on when and where we are :
+
+<<dir-and-date, echo = FALSE>>=
+### clean session
+rm(list=ls())
+
+### When and where we are #####
+date();
+setwd(".")
+getwd();
+
+### create subdirectories #####
+for (subdir in c("outputs/", "tmp/")){ 
+  if (! (subdir %in% dir()) ) system(paste("mkdir -p ", subdir, sep = " "));
+};
+
+### load libraries ###
+library(ggplot2)
+library(ggExtra)
+
+### utilities ###
+source("../../src/utils/tex.table.R")
+
+### Report on the status of this session ####
+print(sessionInfo())
+@
+
+
+\section{ Load fit parameters results }
+
+<<echo=FALSE>>=
+param.names = c("alph",
+		   "RUmaxh",
+		   "RUmaxf",
+		   "kt",
+		   "k1",
+		   "km1",
+		   "k2",
+		   "km2")
+
+get_estimated_parameters <- function(enzyme,
+				     param.names){
+	infileroot = paste("exploreParams_",
+		   enzyme,
+		   "_fit_results_",
+		   sep = "")
+	p_optim = read.table(paste(infileroot,
+				   "p_optim.txt",
+				   sep = ""))
+	names(p_optim) = param.names		   
+	p_init = read.table(paste(infileroot,
+				  "p_init.txt",
+       				  sep = ""))
+	names(p_init) = param.names
+	
+	score = read.table(paste(infileroot,
+				 "score.txt",
+				 sep = ""))
+	score = score[,1]
+	eps = read.table(paste(infileroot,
+			       "eps.txt",
+			       sep = ""))
+	return(list(p_optim = p_optim,
+		    p_init = p_init,
+		    score = score,
+		    eps = eps))
+}
+
+cre   = get_estimated_parameters("cre"  , param.names)
+licre = get_estimated_parameters("licre", param.names)
+
+niter = dim(cre$p_optim)[1]
+nparams = dim(cre$p_optim)[2]
+@
+
+There were \Sexpr{nparams} parameters, estimated from \Sexpr{niter} iterations.
+
+
+\section{ Analyse parameter values }
+
+\subsection{ Distributions of scores }
+
+<<echo=FALSE, fig = TRUE>>=
+cre.score.cut = exp(-6.75)
+hist(log(cre$score), nclass = 100, main = "Fit scores for Cre", col = 1)
+abline(v = log(cre.score.cut), col = 4, lty = 2, lwd = 2)
+ngoodfits.cre = sum(cre$score < cre.score.cut)
+@
+
+Given the modes, we define cutoff on scores. For Cre, scores below \Sexpr{cre.score.cut} can be considered as "good fits". There are \Sexpr{ngoodfits.cre} of them.
+
+<<echo=FALSE, fig = TRUE>>=
+licre.score.cut = exp(-6.25)
+hist(log(licre$score), nclass = 100, main = "Fit scores for LiCre", col = 1)
+abline(v = log(licre.score.cut), col = 4, lty = 2, lwd = 2)
+ngoodfits.licre = sum(licre$score < licre.score.cut)
+@
+
+For LiCre, scores below \Sexpr{licre.score.cut} can be considered as "good fits". There are \Sexpr{ngoodfits.licre} of them.
+
+\subsection{ Scores vs. initial parameter values }
+
+<<echo=FALSE>>=
+dotplot.two.p  <- function(e,
+			   partype = "p_optim",
+			   par1,
+			   par2,
+			   log,
+			   title = "",
+			   colors = c("darkblue", "yellow", "red"),
+			   ncolors = 20	){
+
+	x = e[[partype]]
+	j1 = which(names(x) == par1)
+	j2 = which(names(x) == par2)
+	df = data.frame(X = x[,j1],
+			Y = x[,j2],
+			score = e$score)
+
+	p <- ggplot(df, aes(X, Y)) +
+		geom_point(aes(colour = log(score))) +
+		xlab(par1) +
+		ylab(par2) +
+		ggtitle(paste(partype, ".", title))
+	if (log == "x")
+		p = p + scale_x_log10()
+	if (log == "y")
+		p = p + scale_y_log10()
+	if (log == "xy"){
+		p = p + scale_x_log10()
+		p = p + scale_y_log10()
+	}
+
+	## color = score (with a continuous palette)
+	colfunc = colorRampPalette(colors)
+	pal = colfunc(ncolors)
+	p = p + scale_colour_gradientn(colours = pal)
+
+	return(p)
+}
+@
+
+<<fig=TRUE, echo = FALSE>>=
+p = dotplot.two.p(cre,
+		  partype = "p_init",
+		  "alph",
+		  "kt",
+		  log = "xy",
+		  title = "Cre")
+print(p)
+@
+<<fig=TRUE, echo = FALSE>>=
+p = dotplot.two.p(licre,
+		  partype = "p_init",
+		  "alph",
+		  "kt",
+		  log = "xy",
+		  title = "LiCre")
+print(p)
+@
+
+<<fig=TRUE, echo = FALSE>>=
+p = dotplot.two.p(cre,
+		  partype = "p_init",
+		  "km1", "k1", log = "xy", title = "Cre")
+print(p)
+@
+
+<<fig=TRUE, echo = FALSE>>=
+p = dotplot.two.p(licre,
+		  partype = "p_init",
+		  "km1", "k1", log = "xy", title = "LiCre")
+print(p)
+@
+
+<<fig=TRUE, echo = FALSE>>=
+p = dotplot.two.p(cre,
+		  partype = "p_init",
+		  "km2", "k2", log = "xy", title = "Cre")
+print(p)
+@
+
+<<fig=TRUE, echo = FALSE>>=
+p = dotplot.two.p(licre,
+		  partype = "p_init",
+		  "km2", "k2", log = "xy", title = "LiCre")
+print(p)
+@
+
+Conclusion: We don't see any correlation between the final score and the initial parameter values, except for $k_{m2}$ where high initial values tend to give poor fits (high scores).
+
+
+\subsection{ Optimal parameter values from all fits }
+
+Alpha versus kt
+
+<<fig=TRUE, echo = FALSE>>=
+p = dotplot.two.p(cre,
+		  partype = "p_optim",
+		  "alph", "kt", log = "xy", title = "Cre")
+print(p)
+@
+
+<<fig=TRUE, echo = FALSE>>=
+p = dotplot.two.p(licre,
+		  partype = "p_optim",
+		  "alph", "kt", log = "xy", title = "LiCre")
+print(p)
+@
+
+<<fig=TRUE, echo = FALSE>>=
+p = dotplot.two.p(cre,
+		  partype = "p_optim",
+		  "km1", "k1", log = "xy", title = "Cre")
+print(p)
+@
+
+<<fig=TRUE, echo = FALSE>>=
+p = dotplot.two.p(licre,
+		  partype = "p_optim",
+		  "km1", "k1", log = "xy", title = "LiCre")
+print(p)
+@
+
+<<fig=TRUE, echo = FALSE>>=
+p = dotplot.two.p(cre,
+		  partype = "p_optim",
+		  "km2", "k2", log = "xy", title = "Cre")
+print(p)
+@
+
+<<fig=TRUE, echo = FALSE>>=
+p = dotplot.two.p(licre,
+		  partype = "p_optim",
+		  "km2", "k2", log = "xy", title = "LiCre")
+print(p)
+@
+
+\subsection{ Explore KDs }
+
+With $KD_1 = k_{m1}/k_1$ and $KD_2 = k_{m2}/k_2$, and $pKD = -log_{10}(KD)$.
+
+<<echo=FALSE>>=
+x = cre$p_optim
+x$KD1 = x$km1/x$k1
+x$KD2 = x$km2/x$k2
+x$pKD1 = -log10(x$KD1)
+x$pKD2 = -log10(x$KD2)
+x$cooperative.moment = x$KD1/x$KD2
+cre$p_optim = x
+
+x = licre$p_optim
+x$KD1 = x$km1/x$k1
+x$KD2 = x$km2/x$k2
+x$pKD1 = -log10(x$KD1)
+x$pKD2 = -log10(x$KD2)
+x$cooperative.moment = x$KD1/x$KD2
+licre$p_optim = x
+@
+
+
+<<echo=FALSE>>=
+plot_KDs <- function(e,
+		     log = "xy",
+		     title = "",
+		     colors = c("darkblue", "yellow", "red"),
+		     ncolors = 20){
+	x = e$p_optim
+
+	df = data.frame(KD1 = x$KD1,
+			KD2 = x$KD2,
+			score = e$score)
+
+	p <- ggplot(df, aes(KD1, KD2)) +
+		geom_point(aes(colour = log(score))) +
+		ggtitle(title)
+	if (log == "x")
+		p = p + scale_x_log10()
+	if (log == "y")
+		p = p + scale_y_log10()
+	if (log == "xy"){
+		p = p + scale_x_log10()
+		p = p + scale_y_log10()
+	}
+
+	## color = score (with a continuous palette)
+	colfunc = colorRampPalette(colors)
+	pal = colfunc(ncolors)
+	p = p + scale_colour_gradientn(colours = pal)
+
+	return(p)
+}
+@
+
+<<fig=TRUE, echo=FALSE>>=
+p = plot_KDs(cre, title = "Cre")
+print(p)
+@
+
+<<fig=TRUE, echo=FALSE>>=
+p = plot_KDs(licre, title = "LiCre")
+print(p)
+@
+
+\subsection{ Parameter values for "good fits" only }
+
+<<echo = FALSE>>=
+npar = dim(cre$p_optim)[2]
+cre$p_optim_goodfits = cre$p_optim
+cre$p_optim_goodfits[ cre$score   >= cre.score.cut   ,] <- rep(NA, times = npar)
+
+npar = dim(licre$p_optim)[2]
+licre$p_optim_goodfits = licre$p_optim
+licre$p_optim_goodfits[ licre$score   >= licre.score.cut   ,] <- rep(NA, times = npar)
+@
+
+<<echo=FALSE, fig = TRUE>>=
+p = dotplot.two.p(cre,
+		  partype = "p_optim_goodfits",
+		  "alph", "kt", log = "xy", title = "Cre")
+print(p)
+@
+
+
+<<echo=FALSE>>=
+parplot <-  function(e,
+		     partype = "p_optim",
+		     par1,
+		     par2,
+		     log = "",
+		     log10center = FALSE,
+		     title = "",
+		     alpha = 0.4,
+		     smooth.method = "loess",
+		     smooth.color = "red",
+		     smooth.se = TRUE,
+		     smooth.fill ="#69b3a2",
+		     bounds.par1 = NULL,
+		     bounds.par2 = NULL,
+		     nbins = 60){
+
+	x = e[[partype]]
+	j1 = which(names(x) == par1)
+	j2 = which(names(x) == par2)
+	df = data.frame(X = x[,j1],
+			Y = x[,j2])
+	xlabel = par1
+	ylabel = par2
+	if (log10center){
+		log = ""
+		meanX = mean(df$X, na.rm = TRUE)
+		meanY = mean(df$Y, na.rm = TRUE)
+		df$X = log10(df$X/meanX)
+		df$Y = log10(df$Y/meanY)
+		xlabel = paste("log10(", par1, "/<", par1, ">)", sep = "")
+		ylabel = paste("log10(", par2, "/<", par2, ">)", sep = "")
+	}
+
+	p <- ggplot(df, aes(X, Y)) +
+		geom_point(alpha = alpha) +
+		xlab(xlabel) +
+		ylab(ylabel) +
+		ggtitle(paste(partype, ".", title))
+
+	if (log %in% c("x", "xy"))
+		p = p + scale_x_log10( limits = bounds.par1 )
+	else
+		p = p + scale_x_continuous(limits = bounds.par1)
+
+	if (log %in% c("y", "xy"))
+		p = p + scale_y_log10( limits = bounds.par2)
+	else
+		p = p + scale_y_continuous(limits = bounds.par2)
+
+	## add correlation model
+	p = p + geom_smooth(method = smooth.method,
+			    color  = smooth.color,
+			    fill   = smooth.fill,
+			    se     = smooth.se)
+
+	## add marginal distributions
+	p1 <- ggMarginal(p, type = "histogram", bins = nbins)
+
+	return(p1)
+}
+
+@
+
+\subsection{ Pairwise plots of parameters for Cre }
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "alph",
+	    "kt",
+	    log = "xy",
+	    title = "Cre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-3.5,1.2),
+	    bounds.par2 = c(-1.5,2.8),
+	    nbins = 100
+)
+print(p)
+@
+Alpha vs. kt
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "k1",
+	    "km1",
+	    log = "xy",
+	    title = "Cre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-2,1.2),
+	    bounds.par2 = c(-2,1.2),
+	    nbins = 100
+)
+print(p)
+@
+
+k1 vs.km1
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "k2",
+	    "km2",
+	    log = "xy",
+	    title = "Cre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-1,1.2),
+	    bounds.par2 = c(-1, 1.2),
+	    nbins = 100)
+print(p)
+@
+
+k2 vs.km2
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "RUmaxf",
+	    "RUmaxh",
+	    log = "",
+	    title = "Cre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-2,1.2),
+	    bounds.par2 = c(-2, 1.2),
+	    nbins = 100)
+print(p)
+@
+
+RUmax
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "KD1",
+	    "KD2",
+	    log = "",
+	    title = "Cre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-0.05,0.05),
+	    bounds.par2 = c(-0.5, 0.5),
+	    nbins = 100)
+print(p)
+@
+
+KD1 vs. KD2
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "KD1",
+	    "cooperative.moment",
+	    log = "",
+	    title = "Cre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-0.05,0.05),
+	    bounds.par2 = c(-0.5, 0.5),
+	    nbins = 100)
+print(p)
+@
+
+KD1 vs. cooperative moment
+
+\newpage{}
+
+Correlation coefficient between KD1 and KD2 for Cre:
+
+<<>>=
+x = cre$p_optim_goodfits
+t = cor.test(x$KD1, x$KD2, method = "spearman", use = "complete.obs")
+print(t)
+@
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "k1",
+	    "k2",
+	    log = "",
+	    title = "Cre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-2,1.2),
+	    bounds.par2 = c(-2,1.2),
+	    nbins = 100)
+print(p)
+@
+
+k1 vs. km2
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "k1",
+	    "km2",
+	    log = "",
+	    title = "Cre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-2,1.2),
+	    bounds.par2 = c(-2,1.2),
+	    nbins = 100)
+print(p)
+@
+
+k1 vs. km2
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "km1",
+	    "k2",
+	    log = "",
+	    title = "Cre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-2,1.2),
+	    bounds.par2 = c(-2,1.2),
+	    nbins = 100)
+print(p)
+@
+
+km1 vs. k2
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "km1",
+	    "k2",
+	    log = "",
+	    title = "Cre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-2,1.2),
+	    bounds.par2 = c(-2,1.2),
+	    nbins = 100)
+print(p)
+@
+
+km1 vs. km2
+
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "alph",
+	    "RUmaxh",
+	    log = "x",
+	    title = "Cre")
+print(p)
+@
+Alpha vs. RUmaxh
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "alph",
+	    "RUmaxf",
+	    log = "x",
+	    title = "Cre")
+print(p)
+@
+Alpha vs. RUmaxf
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "alph",
+	    "KD1",
+	    log = "xy",
+	    title = "Cre")
+print(p)
+@
+Alpha vs. KD1
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "alph",
+	    "KD2",
+	    log = "xy",
+	    title = "Cre")
+print(p)
+@
+
+Alpha vs. KD2
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "kt",
+	    "RUmaxh",
+	    log = "x",
+	    title = "Cre")
+print(p)
+@
+
+kt vs. RUmaxh
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "kt",
+	    "RUmaxf",
+	    log = "x",
+	    title = "Cre")
+print(p)
+@
+
+kt vs. RUmaxf
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "kt",
+	    "KD1",
+	    log = "xy",
+	    title = "Cre")
+print(p)
+@
+
+kt vs. KD1
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "kt",
+	    "KD2",
+	    log = "xy",
+	    title = "Cre")
+print(p)
+@
+kt vs. KD2
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "RUmaxh",
+	    "RUmaxf",
+	    log = "",
+	    title = "Cre")
+print(p)
+@
+
+RUmaxh vs. RUmaxf
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "RUmaxh",
+	    "KD1",
+	    log = "y",
+	    title = "Cre")
+print(p)
+@
+RUmaxh vs. KD1
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "RUmaxh",
+	    "KD2",
+	    log = "y",
+	    title = "Cre")
+print(p)
+@
+RUmaxh vs. KD2
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "RUmaxf",
+	    "KD1",
+	    log = "y",
+	    title = "Cre")
+print(p)
+@
+
+RUmaxf vs. KD1
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "RUmaxf",
+	    "KD2",
+	    log = "y",
+	    title = "Cre")
+print(p)
+@
+
+RUmaxf vs. KD2
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(cre,
+	    partype = "p_optim_goodfits",
+	    "KD1",
+	    "KD2",
+	    log = "xy",
+	    title = "Cre")
+print(p)
+@
+KD1 vs. KD2
+
+\subsection{ Pairwise plots of parameters for LiCre }
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "alph",
+	    "kt",
+	    log = "xy",
+	    title = "LiCre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-3.5,1.2),
+	    bounds.par2 = c(-1.5,2.8),
+	    nbins = 100
+)
+print(p)
+@
+Alpha vs. kt
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "k1",
+	    "km1",
+	    log = "xy",
+	    title = "LiCre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-2,1.2),
+	    bounds.par2 = c(-2,1.2),
+	    nbins = 100
+)
+print(p)
+@
+
+k1 vs.km1
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "k2",
+	    "km2",
+	    log = "xy",
+	    title = "LiCre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-1,1.2),
+	    bounds.par2 = c(-1, 1.2),
+	    nbins = 100)
+print(p)
+@
+
+k2 vs.km2
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "RUmaxf",
+	    "RUmaxh",
+	    log = "",
+	    title = "LiCre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-2,1.2),
+	    bounds.par2 = c(-2, 1.2),
+	    nbins = 100)
+print(p)
+@
+
+RUmax
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "KD1",
+	    "KD2",
+	    log = "",
+	    title = "LiCre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-0.05,0.05),
+	    bounds.par2 = c(-0.5, 0.5),
+	    nbins = 100)
+print(p)
+@
+
+KD1 vs. KD2
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "KD1",
+	    "KD2",
+	    log = "",
+	    title = "LiCre",
+	    log10center = FALSE,
+	    nbins = 100)
+print(p)
+@
+
+KD1 vs. KD2 (no xy limits)
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "KD1",
+	    "cooperative.moment",
+	    log = "",
+	    title = "LiCre",
+	    log10center = TRUE,
+	    bounds.par1 = c(-0.05,0.05),
+	    bounds.par2 = c(-0.5, 0.5),
+	    nbins = 100)
+print(p)
+@
+
+KD1 vs. cooperative moment
+
+\newpage{}
+
+Correlation coefficient between KD1 and KD2 for LiCre:
+
+<<>>=
+x = licre$p_optim_goodfits
+t = cor.test(x$KD1, x$KD2, method = "spearman", use = "complete.obs")
+print(t)
+@
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "alph",
+	    "kt",
+	    log = "xy",
+	    title = "LiCre")
+print(p)
+@
+Alpha vs. kt
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "alph",
+	    "RUmaxh",
+	    log = "x",
+	    title = "LiCre")
+print(p)
+@
+Alpha vs. RUmaxh
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "alph",
+	    "RUmaxf",
+	    log = "x",
+	    title = "LiCre")
+print(p)
+@
+Alpha vs. RUmaxf
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "alph",
+	    "KD1",
+	    log = "xy",
+	    title = "LiCre")
+print(p)
+@
+Alpha vs. KD1
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "alph",
+	    "KD2",
+	    log = "xy",
+	    title = "LiCre")
+print(p)
+@
+
+Alpha vs. KD2
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "kt",
+	    "RUmaxh",
+	    log = "x",
+	    title = "LiCre")
+print(p)
+@
+
+kt vs. RUmaxh
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "kt",
+	    "RUmaxf",
+	    log = "x",
+	    title = "LiCre")
+print(p)
+@
+
+kt vs. RUmaxf
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "kt",
+	    "KD1",
+	    log = "xy",
+	    title = "LiCre")
+print(p)
+@
+
+kt vs. KD1
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "kt",
+	    "KD2",
+	    log = "xy",
+	    title = "LiCre")
+print(p)
+@
+kt vs. KD2
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "RUmaxh",
+	    "RUmaxf",
+	    log = "",
+	    title = "LiCre")
+print(p)
+@
+
+RUmaxh vs. RUmaxf
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "RUmaxh",
+	    "KD1",
+	    log = "y",
+	    title = "LiCre")
+print(p)
+@
+RUmaxh vs. KD1
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "RUmaxh",
+	    "KD2",
+	    log = "y",
+	    title = "LiCre")
+print(p)
+@
+RUmaxh vs. KD2
+
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "RUmaxf",
+	    "KD1",
+	    log = "y",
+	    title = "LiCre")
+print(p)
+@
+
+RUmaxf vs. KD1
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "RUmaxf",
+	    "KD2",
+	    log = "y",
+	    title = "LiCre")
+print(p)
+@
+
+RUmaxf vs. KD2
+
+<<echo=FALSE, fig = TRUE>>=
+p = parplot(licre,
+	    partype = "p_optim_goodfits",
+	    "KD1",
+	    "KD2",
+	    log = "xy",
+	    title = "LiCre")
+print(p)
+@
+KD1 vs. KD2
+
+@
+
+KD1 vs. cooperative moment
+
+
+\subsection{ Distributions of centered parameter values }
+
+We compute values of parameters around their mean: $log_{10}(x/<x>)$, and show their distributions on a common scale. This will illustrate that some params are well defined and others are not.
+
+<<echo=FALSE>>=
+plot.distribs.params.centered <- function(x,
+					  xbounds = c(-1.5, 1),
+					  ybounds = NULL,
+					  nbins = 80){
+	parmeans = colMeans(x)
+	npars = dim(x)[2]
+	# initialize
+	cx = x
+	# log-transform k1, km1, k2, km2
+	#for (j in 1:npars){
+	#	if (names(cx)[j] %in% c("k1", "km1", "k2", "km2")){
+		#	cx[,j] = log10(cx[,j])
+	#		names(cx)[j] = paste("log10.", names(cx)[j], sep = "")
+	#	}
+	#}
+	# compute centered values
+	for (j in 1:npars){
+		cx[,j] = log10(x[,j]/parmeans[j])
+	}
+	names(cx) = paste(names(cx), ".variation", sep = "")
+	
+	n = dim(cx)[1]
+	df = data.frame(value = cx[,1],
+			text = rep(names(cx)[1], times = n))
+	for (j in 2:npars){
+		df2 = data.frame(value = cx[,j],
+				 text = rep(names(cx)[j], times = n))
+		df = rbind(df, df2)
+	}
+	
+	p = ggplot( data = df, aes(x = value), color = "black") +
+		geom_histogram(alpha=1, bins = nbins) +
+		facet_wrap(~text) 
+	if (!is.null(xbounds))
+		p = p + xlim(xbounds[1], xbounds[2])
+	if (!is.null(ybounds))
+		p = p + ylim(ybounds[1], ybounds[2])
+	return(p)
+}
+
+pars.to.show = c("alph", "kt",
+		 "RUmaxh", "RUmaxf",
+		 "k1", "km1",
+		 "k2", "km2")
+@
+
+<<fig=TRUE>>=
+x = na.omit(licre$p_optim_goodfits)
+j.keep = names(x) %in% pars.to.show
+x = x[,j.keep]
+p = plot.distribs.params.centered(x,nbins = 60)
+print(p)
+@
+
+LiCre, all data
+
+<<fig=TRUE>>=
+x = na.omit(licre$p_optim_goodfits)
+j.keep = names(x) %in% pars.to.show
+x = x[,j.keep]
+p = plot.distribs.params.centered(x, xbounds = c(-0.5,0.5), nbins = 60)
+print(p)
+@
+
+LiCre with xlim.
+
+<<fig=TRUE>>=
+x = na.omit(licre$p_optim_goodfits)
+j.keep = names(x) %in% pars.to.show
+x = x[,j.keep]
+p = plot.distribs.params.centered(x, xbounds = c(-0.5,0.5), ybounds = c(0,650),nbins = 60)
+print(p)
+@
+
+LiCre with xlim and ylim for alph and kt
+
+<<fig=TRUE>>=
+x = na.omit(licre$p_optim_goodfits)
+j.keep = names(x) %in% pars.to.show
+x = x[,j.keep]
+p = plot.distribs.params.centered(x, xbounds = c(-0.5,0.5), ybounds = c(0,20),nbins = 60)
+print(p)
+@
+
+LiCre with xlim and ylim for k1 and km1
+
+<<fig=TRUE>>=
+x = na.omit(licre$p_optim_goodfits)
+j.keep = names(x) %in% pars.to.show
+x = x[,j.keep]
+p = plot.distribs.params.centered(x, xbounds = c(-0.5,0.5), ybounds = c(0,30),nbins = 60)
+print(p)
+@
+
+LiCre with xlim and ylim for k2 and km2
+
+<<fig=TRUE>>=
+x = na.omit(cre$p_optim_goodfits)
+j.keep = names(x) %in% pars.to.show
+x = x[,j.keep]
+p = plot.distribs.params.centered(x,nbins = 60)
+print(p)
+@
+
+Cre, all data
+
+<<fig=TRUE>>=
+x = na.omit(cre$p_optim_goodfits)
+j.keep = names(x) %in% pars.to.show
+x = x[,j.keep]
+p = plot.distribs.params.centered(x, xbounds = c(-1.2,0.5), nbins = 60)
+print(p)
+@
+
+Cre with xlim
+
+<<fig=TRUE>>=
+x = na.omit(cre$p_optim_goodfits)
+j.keep = names(x) %in% pars.to.show
+x = x[,j.keep]
+p = plot.distribs.params.centered(x, xbounds = c(-1.2,0.5), ybounds = c(0,150),nbins = 60)
+print(p)
+@
+
+Cre with xlim and ylim for alph and kt
+
+<<fig=TRUE>>=
+x = na.omit(cre$p_optim_goodfits)
+j.keep = names(x) %in% pars.to.show
+x = x[,j.keep]
+p = plot.distribs.params.centered(x, xbounds = c(-1.2,0.5), ybounds = c(0,30),nbins = 60)
+print(p)
+@
+
+Cre with xlim and ylim for k1 and km1
+
+<<fig=TRUE>>=
+x = na.omit(cre$p_optim_goodfits)
+j.keep = names(x) %in% pars.to.show
+x = x[,j.keep]
+p = plot.distribs.params.centered(x, xbounds = c(-1.2,0.5), ybounds = c(0,500),nbins = 60)
+print(p)
+@
+
+Cre with xlim and ylim for k2 and km2
+
+\subsection{ Export parameters mean and sd ; from good fits only}
+
+<<echo=FALSE, results = tex>>=
+
+x = cre$p_optim_goodfits
+x$KD1 = x$km1/x$k1
+x$KD2 = x$km2/x$k2
+x$pKD1 = -log10(x$KD1)
+x$pKD2 = -log10(x$KD2)
+x$alph.x.kt = x$alph*x$kt
+x$log10alph = log10(x$alph)
+x$log10kt = log10(x$kt)
+cre$p_optim_goodfits = x
+
+x = licre$p_optim_goodfits
+x$KD1 = x$km1/x$k1
+x$KD2 = x$km2/x$k2
+x$pKD1 = -log10(x$KD1)
+x$pKD2 = -log10(x$KD2)
+x$alpha.x.kt = x$alph*x$kt
+x$log10alph = log10(x$alph)
+x$log10kt = log10(x$kt)
+licre$p_optim_goodfits = x
+
+# Build and print table
+m = cbind((apply(cre$p_optim_goodfits, FUN = mean, MARGIN = 2, na.rm = TRUE)),
+	  (apply(cre$p_optim_goodfits, FUN = sd, MARGIN = 2, na.rm = TRUE)),
+	  (apply(licre$p_optim_goodfits, FUN = mean, MARGIN = 2, na.rm = TRUE)),
+	  (apply(licre$p_optim_goodfits, FUN = sd, MARGIN = 2, na.rm = TRUE)))
+
+colnames(m) <- c("cre.mean",
+		 "cre.sd",
+		 "licre.mean",
+		 "licre.sd")
+
+df = as.data.frame(m)
+
+tex.table(df, digits = 2, display = c("s", rep("e" , times = 4)))
+@
+
+
+<<>>=
+date();
+@
+
+\end{document}
+
